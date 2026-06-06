@@ -1,29 +1,36 @@
 const express = require('express');
 const app = express();
-__path = process.cwd()
+const path = require('path');
 const bodyParser = require("body-parser");
 const PORT = process.env.PORT || 7860;
-let server = require('./qr'),
-    code = require('./pair');
+
+// සර්වර් එකේ Max Listeners වැඩි කිරීම
 require('events').EventEmitter.defaultMaxListeners = 500;
-app.use('/server', server);
-app.use('/code', code);
-app.use('/pair',async (req, res, next) => {
-res.sendFile(__path + '/pair.html')
-})
-app.use('/qr',async (req, res, next) => {
-res.sendFile(__path + '/qr.html')
-})
-app.use('/',async (req, res, next) => {
-res.sendFile(__path + '/main.html')
-})
+
+// ⚠️ අනිවාර්යයෙන්ම Router වලට කලින් BodyParser තිබිය යුතුය
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
+
+const server = require('./qr');
+const code = require('./pair');
+
+app.use('/server', server);
+app.use('/', code); // Pair.js එක කෙලින්ම මූලික ලිපිනයට සම්බන්ධ කලා
+
+app.use('/pair', async (req, res) => {
+    res.sendFile(path.join(process.cwd(), 'pair.html'));
+});
+
+app.use('/qr', async (req, res) => {
+    res.sendFile(path.join(process.cwd(), 'qr.html'));
+});
+
+app.use('/main', async (req, res) => {
+    res.sendFile(path.join(process.cwd(), 'main.html'));
+});
+
 app.listen(PORT, () => {
-    console.log(`
-Don't Forgot To Give Star
+    console.log(`🚀 Server running on http://localhost:${PORT}`);
+});
 
- Server running on http://localhost:` + PORT)
-})
-
-module.exports = app
+module.exports = app;

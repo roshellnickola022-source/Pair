@@ -2,17 +2,18 @@ const { makeid } = require('./gen-id');
 const express = require('express');
 const QRCode = require('qrcode');
 const fs = require('fs');
-let router = express.Router();
+const path = require('path');
+const router = express.Router();
 const pino = require("pino");
+const logger = pino({ level: "silent" });
 const {
     default: makeWASocket,
     useMultiFileAuthState,
     delay,
     makeCacheableSignalKeyStore,
     Browsers,
-    jidNormalizedUser
+    fetchLatestBaileysVersion
 } = require("@whiskeysockets/baileys");
-const axios = require('axios');
 
 function removeFile(FilePath) {
     if (!fs.existsSync(FilePath)) return false;
@@ -21,153 +22,74 @@ function removeFile(FilePath) {
 
 router.get('/', async (req, res) => {
     const id = makeid();
+    const sessionPath = path.join(__dirname, 'temp', id);
     
-    async function GIFTED_MD_PAIR_CODE() {
-        const {
-            state,
-            saveCreds
-        } = await useMultiFileAuthState('./temp/' + id);
+    async function GIFTED_MD_QR_CODE() {
+        const { state, saveCreds } = await useMultiFileAuthState(sessionPath);
+        const { version } = await fetchLatestBaileysVersion();
+        
         try {
-            var items = ["Safari"];
-            function selectRandomItem(array) {
-                var randomIndex = Math.floor(Math.random() * array.length);
-                return array[randomIndex];
-            }
-            var randomItem = selectRandomItem(items);
-            
             let sock = makeWASocket({
-                auth: state,
+                auth: {
+                    creds: state.creds,
+                    keys: makeCacheableSignalKeyStore(state.keys, logger),
+                },
                 printQRInTerminal: false,
-                logger: pino({
-                    level: "silent"
-                }),
-                browser: Browsers.macOS("Desktop"),
+                logger: logger,
+                version: version,
+                browser: ["Ubuntu", "Chrome", "20.0.04"],
             });
             
             sock.ev.on('creds.update', saveCreds);
+            
             sock.ev.on("connection.update", async (s) => {
-                const {
-                    connection,
-                    lastDisconnect,
-                    qr
-                } = s;
-                if (qr) await res.end(await QRCode.toBuffer(qr));
+                const { connection, lastDisconnect, qr } = s;
+                
+                if (qr && !res.headersSent) {
+                    const qrBuffer = await QRCode.toBuffer(qr);
+                    res.type('image/png');
+                    return res.send(qrBuffer);
+                }
+                
                 if (connection == "open") {
                     await delay(5000);
-                    let data = fs.readFileSync(__dirname + `/temp/${id}/creds.json`);
-                    let rf = __dirname + `/temp/${id}/creds.json`;
+                    let credsFilePath = path.join(sessionPath, 'creds.json');
                     
-                    function generateRandomText() {
-                        const prefix = "3EB";
-                        const characters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
-                        let randomText = prefix;
-                        for (let i = prefix.length; i < 22; i++) {
-                            const randomIndex = Math.floor(Math.random() * characters.length);
-                            randomText += characters.charAt(randomIndex);
-                        }
-                        return randomText;
-                    }
-                    
-                    const randomText = generateRandomText();
                     try {
+                        let data = fs.readFileSync(credsFilePath);
                         const base64Session = Buffer.from(data.toString()).toString('base64');
                         let md = "ANJU-XPRO~" + base64Session;
+                        
                         let code = await sock.sendMessage(sock.user.id, { text: md });
                         
-                        let cap = `
-🔐 *𝙳𝙾 𝙽𝙾𝚃 �𝚂𝙷𝙰𝚁𝙴 𝚃𝙷𝙸𝚂 𝙲𝙾𝙳𝙴 𝚆𝙸𝚃𝙷 �𝙽𝚈𝙾𝙽𝙴!!*
-
-Use this code to create your own *𝚀𝚄𝙴𝙴𝙽 𝙰𝙽𝙹𝚄 𝚇𝙿𝚁𝙾* WhatsApp User Bot. 🤖
-
-📂 *WEBSITE:*  
-👉 https://xpro-botz-ofc.vercel.app/
-
-🛠️ *To add your SESSION_ID:*  
-1. Open the \`session.js\` file in the repo.  
-2. Paste your session like this:  
-\`\`\`js
-module.exports = {
-  SESSION_ID: 'PASTE_YOUR_SESSION_ID_HERE'
-}
-\`\`\`  
-3. Save the file and run the bot. ✅
-
-⚠️ *NEVER SHARE YOUR SESSION ID WITH ANYONE!*
-`;
-                    await sock.sendMessage(sock.user.id, {
-                        text: cap,
-                        contextInfo: {
-                            externalAdReply: {
-                                title: "QUEEN ANJU XPRO",
-                                thumbnailUrl: "https://telegra.ph/file/adc46970456c26cad0c15.jpg",
-                                sourceUrl: "https://whatsapp.com/channel/0029Vaj5XmgFXUubAjlU5642",
-                                mediaType: 2,
-                                renderLargerThumbnail: true,
-                                showAdAttribution: true,
-                            },
-                        },
-                    }, { quoted: code });
+                        let cap = `🔐 *DO NOT SHARE THIS CODE WITH ANYONE!!*\n\nUse this code to create your own *QUEEN ANJU XPRO* WhatsApp User Bot. 🤖`;
+                        
+                        await sock.sendMessage(sock.user.id, { text: cap }, { quoted: code });
                     } catch (e) {
-                        let ddd = await sock.sendMessage(sock.user.id, { text: e.toString() });
-                       let cap = `
-🔐 *𝙳𝙾 𝙽𝙾𝚃 𝚂𝙷𝙰𝚁𝙴 �𝚃𝙷𝙸𝚂 𝙲𝙾𝙳𝙴 𝚆𝙸𝚃𝙷 𝙰𝙽𝚈𝙾𝙽𝙴!!*
-
-Use this code to create your own *𝚀𝚄𝙴𝙴𝙽 𝙰𝙽𝙹𝚄 𝚇𝙿𝚁𝙾* WhatsApp User Bot. 🤖
-
-📂 *WEBSITE:*  
-👉 https://xpro-botz-ofc.vercel.app/
-
-🛠️ *To add your SESSION_ID:*  
-1. Open the \`session.js\` file in the repo.  
-2. Paste your session like this:  
-\`\`\`js
-module.exports = {
-  SESSION_ID: 'PASTE_YOUR_SESSION_ID_HERE'
-}
-\`\`\`  
-3. Save the file and run the bot. ✅
-
-⚠️ *NEVER SHARE YOUR SESSION ID WITH ANYONE!*
-`;
-                    await sock.sendMessage(sock.user.id, {
-                        text: cap,
-                        contextInfo: {
-                            externalAdReply: {
-                                title: "QUEEN ANJU XPRO",
-                                thumbnailUrl: "https://telegra.ph/file/adc46970456c26cad0c15.jpg",
-                                sourceUrl: "https://whatsapp.com/channel/0029Vaj5XmgFXUubAjlU5642",
-                                mediaType: 2,
-                                renderLargerThumbnail: true,
-                                showAdAttribution: true,
-                            },
-                        },
-                    }, { quoted: ddd });
+                        console.error("Error sending QR Session:", e);
                     }
-                    await delay(10);
+                    
+                    await delay(2000);
+                    sock.ev.removeAllListeners('connection.update');
                     await sock.ws.close();
-                    await removeFile('./temp/' + id);
-                    console.log(`👤 ${sock.user.id} 𝗖𝗼𝗻𝗻𝗲𝗰𝘁𝗲𝗱 ✅ 𝗥𝗲𝘀𝘁𝗮𝗿𝘁𝗶𝗻𝗴 𝗽𝗿𝗼𝗰𝗲𝘀𝘀...`);
-                    await delay(10);
-                    process.exit();
-                } else if (connection === "close" && lastDisconnect && lastDisconnect.error && lastDisconnect.error.output.statusCode != 401) {
-                    await delay(10);
-                    GIFTED_MD_PAIR_CODE();
+                    removeFile(sessionPath);
+                    console.log(`👤 Connected successfully.`);
+                } else if (connection === "close" && lastDisconnect?.error?.output?.statusCode !== 401) {
+                    await delay(5000);
+                    GIFTED_MD_QR_CODE();
                 }
             });
         } catch (err) {
-            console.log("service restarted", err);
-            await removeFile('./temp/' + id);
+            console.log("QR Service error", err);
+            removeFile(sessionPath);
             if (!res.headersSent) {
-                await res.send({ code: "❗ Service Unavailable" });
+                res.send({ error: "❗ Service Unavailable" });
             }
         }
     }
-    await GIFTED_MD_PAIR_CODE();
+    await GIFTED_MD_QR_CODE();
 });
 
-setInterval(() => {
-    console.log("☘️ 𝗥𝗲𝘀𝘁𝗮𝗿𝘁𝗶𝗻𝗴 𝗽𝗿𝗼𝗰𝗲𝘀𝘀...");
-    process.exit();
-}, 180000);
+// මුළු සර්වර් එකම ක්‍රෑෂ් කරවන process.exit() සහිත setInterval එක ඉවත් කරන ලදී.
 
 module.exports = router;
